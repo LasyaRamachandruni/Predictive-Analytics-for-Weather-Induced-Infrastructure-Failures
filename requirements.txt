@@ -1,0 +1,17 @@
+numpy
+pandas
+scikit-learn
+xgboost
+torch
+tensorflow
+matplotlib
+geopandas
+shapely
+rasterio
+pyproj
+jupyter
+pytest
+black
+flake8
+tqdm
+seaborn
