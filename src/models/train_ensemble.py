@@ -437,6 +437,12 @@ def main() -> None:
         config = apply_quick_run_overrides(config)
 
     mode = args.mode or config.get("experiment", {}).get("mode", "demo")
+    if mode == "real":
+        cache_dir = config.get("data", {}).get("real", {}).get("cache_dir", "data/raw/real")
+        logger.info(
+            "Running in REAL mode. NOAA Storm Events and GHCN files will be cached under %s.",
+            cache_dir,
+        )
     train_and_evaluate(config, mode=mode, output_dir=args.output_dir, run_name=args.run_name)
 
 

@@ -15,8 +15,11 @@ Production-ready hybrid modelling pipeline that forecasts infrastructure failure
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Train the hybrid ensemble on synthetic demo data
+# 2a. Train the hybrid ensemble on synthetic demo data
 python -m src.models.train_ensemble --config configs/default.yaml --mode demo
+
+# 2b. (Optional) Pull NOAA + GHCN data and train on real events
+python -m src.models.train_ensemble --config configs/default.yaml --mode real
 
 # 3. Plot regional risk using the generated artifacts
 python -m src.visualization.map_failures --artifacts models/latest/metrics.json
@@ -38,7 +41,7 @@ Override values via CLI-friendly YAML edits or create additional config files fo
 ## Pipeline Overview
 1. **Data adapters (`src/data/download_and_preprocess.py`)**
    - `demo` mode fabricates weather + failure sequences across multiple regions with injected seasonality, extremes, and SVI context.
-   - `real` mode exposes CSV-based stubs—add your loaders for NOAA/ERA5 and outage logs, then plug into the join points marked with TODO comments.
+   - `real` mode downloads NOAA Storm Events damage reports and GHCN daily observations, aggregates them to state/day, and caches the raw files automatically.
 2. **Feature engineering (`src/data/data_pipeline.py`)**
    - Continuous timeline alignment, missing data imputation, rolling means/max/std, lag features, growth rates, and deterministic time-based splits.
    - Builds both tabular matrices and scaled sliding-window tensors with aligned metadata for ensembling.
@@ -49,6 +52,11 @@ Override values via CLI-friendly YAML edits or create additional config files fo
 4. **Visualisation (`src/visualization/`)**
    - `plot_results.py`: reusable actual-vs-predicted and residual plotting helpers.
    - `map_failures.py`: GeoPandas-based mapping fed by saved prediction tables.
+
+## Real Data Sources & Caching
+- **Weather observations**: Global Historical Climatology Network (GHCN) daily station files from NOAA (`https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/`).
+- **Infrastructure impact proxy**: NOAA Storm Events “details” files (`https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/`), aggregated to state/day with damage estimates used as the failure target.
+- Data is cached under `data/raw/real/` (configurable in `configs/default.yaml`) so repeated runs reuse downloads. Delete the directory to force a refresh.
 
 ## Switching to Classification Mode
 Set `target.type: classification` in the config. The pipeline will:

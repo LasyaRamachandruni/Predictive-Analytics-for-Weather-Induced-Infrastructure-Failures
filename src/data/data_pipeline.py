@@ -192,10 +192,15 @@ def _engineer_features(
     df.sort_values(by=[group_col, timestamp_col], inplace=True)
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    base_weather_cols = feature_cfg.get(
-        "base_weather_cols",
-        [col for col in numeric_cols if col not in {target_col, "longitude", "latitude"}],
-    )
+    configured_cols = feature_cfg.get("base_weather_cols")
+    if configured_cols:
+        base_weather_cols = [col for col in configured_cols if col in df.columns]
+        if len(base_weather_cols) < len(configured_cols):
+            missing = set(configured_cols) - set(base_weather_cols)
+            if missing:
+                logger.warning("Skipping unavailable base weather columns: %s", ", ".join(sorted(missing)))
+    else:
+        base_weather_cols = [col for col in numeric_cols if col not in {target_col, "longitude", "latitude"}]
 
     for lag in lag_steps:
         df[f"{target_col}_lag_{lag}"] = df.groupby(group_col)[target_col].shift(lag)
