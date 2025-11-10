@@ -32,6 +32,7 @@ DEFAULT_RANDOM_SEED = 42
 STORM_EVENTS_BASE_URL = "https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
 GHCN_STATIONS_URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt"
 GHCN_DAILY_BASE_URL = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/"
+STORM_EVENTS_DATETIME_FORMAT = "%d-%b-%y %H:%M:%S"
 
 STATE_NAME_TO_CODE = {
     "ALABAMA": "AL",
@@ -328,12 +329,23 @@ def _load_storm_events_dataset(
         frame = pd.read_csv(
             file_path,
             usecols=usecols,
-            parse_dates=["BEGIN_DATE_TIME"],
             compression="gzip",
             dtype={"EVENT_ID": "int64", "STATE": "string", "EVENT_TYPE": "string"},
-            infer_datetime_format=True,
             low_memory=False,
         )
+
+        parsed_dates = pd.to_datetime(
+            frame["BEGIN_DATE_TIME"],
+            format=STORM_EVENTS_DATETIME_FORMAT,
+            errors="coerce",
+        )
+        missing_mask = parsed_dates.isna() & frame["BEGIN_DATE_TIME"].notna()
+        if missing_mask.any():
+            parsed_dates.loc[missing_mask] = pd.to_datetime(
+                frame.loc[missing_mask, "BEGIN_DATE_TIME"],
+                errors="coerce",
+            )
+        frame["BEGIN_DATE_TIME"] = parsed_dates
         frames.append(frame)
 
     events = pd.concat(frames, axis=0, ignore_index=True)
