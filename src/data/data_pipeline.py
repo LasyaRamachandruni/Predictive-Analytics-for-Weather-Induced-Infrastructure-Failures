@@ -1,47 +1,357 @@
 """
-data_pipeline.py
-----------------
-Handles the full data pipeline: ingestion → preprocessing → feature engineering → split for training.
+End-to-end data pipeline for hybrid weather + infrastructure modelling.
+
+Workflow
+--------
+1. Load raw data via adapters defined in `download_and_preprocess.py`.
+2. Align data by region and timestamp, fill gaps, add contextual metadata.
+3. Engineer lagged and rolling features for both tabular and sequence models.
+4. Create deterministic train/val/test splits.
+5. Build sliding-window sequences for the LSTM and tabular matrices for tree models.
 """
 
-import pandas as pd
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
 import numpy as np
-from sklearn.model_selection import train_test_split
-from .download_and_preprocess import load_datasets
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+
+from .download_and_preprocess import load_dataset
+from ..utils.metrics import threshold_from_percentile
+
+logger = logging.getLogger(__name__)
 
 
-def build_data_pipeline(test_size=0.2, random_state=42):
-    """Load, clean, and prepare the dataset for model training."""
-    print("🚀 Building data pipeline...")
+DEFAULT_SPLITS = {"val_size": 0.15, "test_size": 0.15}
 
-    # Load datasets
-    outage_data, storm_data, svi_data = load_datasets()
 
-    # Simulate merging (you’ll replace this with your actual logic later)
-    data = pd.concat([outage_data, storm_data], axis=1)
-    data["svi_score"] = np.random.rand(len(data))  # placeholder for SVI merge
+@dataclass
+class TabularDataset:
+    features: pd.DataFrame
+    target: pd.Series
+    metadata: pd.DataFrame
 
-     # Handle missing values
-    data.fillna(0, inplace=True)
 
-    # Create dummy features and labels
-    X = data.drop(columns=["duration_hours"], errors="ignore")
-    y = data.get("duration_hours", pd.Series(np.random.rand(len(data))))
+@dataclass
+class SequenceDataset:
+    features: np.ndarray  # shape: [n_samples, seq_len, n_features]
+    target: np.ndarray
+    metadata: pd.DataFrame
 
-    # 🔧 Convert only numeric columns for training
-    X = X.select_dtypes(include=["number"]).copy()
 
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state
+@dataclass
+class PipelineArtifacts:
+    tabular: Dict[str, TabularDataset]
+    sequences: Dict[str, SequenceDataset]
+    feature_columns: List[str]
+    sequence_feature_columns: List[str]
+    scaler: StandardScaler
+    target_column: str
+    target_type: str
+    classification_threshold: Optional[float]
+    metadata: Dict[str, Any]
+
+
+def run_data_pipeline(config: Dict[str, Any], mode: str = "demo") -> PipelineArtifacts:
+    """
+    Execute the full data pipeline and return engineered datasets.
+    """
+    logger.info("Loading dataset (mode=%s)", mode)
+    raw_df = load_dataset(mode=mode, config=config.get("data", {}))
+
+    timestamp_col = config.get("data", {}).get("timestamp_column", "timestamp")
+    group_col = config.get("data", {}).get("group_column", "region_id")
+    target_col = config.get("target", {}).get("column", "failures")
+
+    frequency = config.get("data", {}).get("frequency")
+    aligned_df = _align_time_series(raw_df, group_col, timestamp_col, frequency)
+
+    engineered_df = _engineer_features(
+        aligned_df,
+        group_col=group_col,
+        timestamp_col=timestamp_col,
+        target_col=target_col,
+        config=config,
+    )
+
+    splits = config.get("split", DEFAULT_SPLITS)
+    split_df = _assign_splits(engineered_df, timestamp_col=timestamp_col, splits=splits)
+
+    feature_exclude = set(config.get("features", {}).get("exclude", []))
+    feature_cols = _select_feature_columns(split_df, target_col, feature_exclude, config)
+    sequence_feature_cols = config.get("sequence", {}).get("features") or feature_cols
+
+    scaler = StandardScaler()
+    train_mask = split_df["split"] == "train"
+    scaler.fit(split_df.loc[train_mask, sequence_feature_cols])
+
+    target_type = config.get("target", {}).get("type", "regression")
+    classification_pct = config.get("target", {}).get("classification_threshold_percentile", 0.8)
+    classification_threshold = None
+
+    if target_type == "classification":
+        _, classification_threshold = threshold_from_percentile(
+            split_df.loc[train_mask, target_col], percentile=classification_pct
+        )
+        split_df["target_class"] = (split_df[target_col] >= classification_threshold).astype(int)
+        target_array_name = "target_class"
+    else:
+        target_array_name = target_col
+
+    seq_len = config.get("sequence", {}).get("length", 24)
+    stride = config.get("sequence", {}).get("stride", 1)
+
+    sequences = _build_sequence_datasets(
+        split_df,
+        group_col=group_col,
+        timestamp_col=timestamp_col,
+        feature_cols=sequence_feature_cols,
+        target_col=target_array_name,
+        scaler=scaler,
+        seq_len=seq_len,
+        stride=stride,
+    )
+
+    sequence_metadata = {split: dataset.metadata for split, dataset in sequences.items()}
+
+    tabular = _build_tabular_datasets(
+        split_df,
+        feature_cols=feature_cols,
+        target_col=target_array_name,
+        timestamp_col=timestamp_col,
+        group_col=group_col,
+        sequence_metadata=sequence_metadata,
+    )
+
+    metadata = {
+        "group_column": group_col,
+        "timestamp_column": timestamp_col,
+        "tabular_sample_counts": {split: ds.features.shape[0] for split, ds in tabular.items()},
+        "sequence_sample_counts": {split: ds.features.shape[0] for split, ds in sequences.items()},
+    }
+
+    return PipelineArtifacts(
+        tabular=tabular,
+        sequences=sequences,
+        feature_columns=feature_cols,
+        sequence_feature_columns=sequence_feature_cols,
+        scaler=scaler,
+        target_column=target_array_name,
+        target_type=target_type,
+        classification_threshold=classification_threshold,
+        metadata=metadata,
     )
 
 
-    print("✅ Data pipeline built successfully.")
-    return X_train, X_test, y_train, y_test
+def _align_time_series(
+    df: pd.DataFrame,
+    group_col: str,
+    timestamp_col: str,
+    frequency: Optional[str],
+) -> pd.DataFrame:
+    """
+    Ensure each region has a continuous timeline by reindexing and forward filling.
+    """
+    aligned_frames: List[pd.DataFrame] = []
+    for region_id, region_df in df.groupby(group_col):
+        region_df = region_df.sort_values(timestamp_col).copy()
+        region_df.set_index(timestamp_col, inplace=True)
+        freq = frequency or pd.infer_freq(region_df.index) or "1H"
+        full_index = pd.date_range(region_df.index.min(), region_df.index.max(), freq=freq)
+        reindexed = region_df.reindex(full_index)
+        reindexed[group_col] = region_id
+        reindexed.ffill(inplace=True)
+        reindexed.fillna(0, inplace=True)
+        aligned_frames.append(reindexed.reset_index().rename(columns={"index": timestamp_col}))
+
+    aligned = pd.concat(aligned_frames, axis=0, ignore_index=True)
+    aligned.sort_values(by=[group_col, timestamp_col], inplace=True)
+    return aligned
 
 
-if __name__ == "__main__":
-    X_train, X_test, y_train, y_test = build_data_pipeline()
-    print("Training data shape:", X_train.shape)
-.
+def _engineer_features(
+    df: pd.DataFrame,
+    group_col: str,
+    timestamp_col: str,
+    target_col: str,
+    config: Dict[str, Any],
+) -> pd.DataFrame:
+    """
+    Add lag, rolling statistics, and weather volatility features.
+    """
+    feature_cfg = config.get("features", {})
+    lag_steps: Sequence[int] = feature_cfg.get("lags", [1, 3, 6, 12])
+    rolling_windows: Sequence[int] = feature_cfg.get("rolling_windows", [3, 6, 12])
+    rolling_stats: Sequence[str] = feature_cfg.get("rolling_statistics", ["mean", "max"])
+
+    df = df.copy()
+    df.sort_values(by=[group_col, timestamp_col], inplace=True)
+
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    base_weather_cols = feature_cfg.get(
+        "base_weather_cols",
+        [col for col in numeric_cols if col not in {target_col, "longitude", "latitude"}],
+    )
+
+    for lag in lag_steps:
+        df[f"{target_col}_lag_{lag}"] = df.groupby(group_col)[target_col].shift(lag)
+
+    for column in base_weather_cols:
+        for lag in lag_steps:
+            df[f"{column}_lag_{lag}"] = df.groupby(group_col)[column].shift(lag)
+
+        for window in rolling_windows:
+            rolled = df.groupby(group_col)[column].rolling(window=window, min_periods=1)
+            if "mean" in rolling_stats:
+                df[f"{column}_rollmean_{window}"] = rolled.mean().reset_index(level=0, drop=True)
+            if "max" in rolling_stats:
+                df[f"{column}_rollmax_{window}"] = rolled.max().reset_index(level=0, drop=True)
+            if "std" in rolling_stats:
+                df[f"{column}_rollstd_{window}"] = rolled.std(ddof=0).reset_index(level=0, drop=True)
+
+    df[f"{target_col}_diff_1"] = df.groupby(group_col)[target_col].diff()
+    df[f"{target_col}_pct_change"] = (
+        df.groupby(group_col)[target_col].pct_change().replace([np.inf, -np.inf], 0.0).fillna(0.0)
+    )
+
+    df.dropna(inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    return df
+
+
+def _assign_splits(df: pd.DataFrame, timestamp_col: str, splits: Dict[str, float]) -> pd.DataFrame:
+    """
+    Assign deterministic train/val/test splits based on chronological order.
+    """
+    df = df.copy()
+    unique_timestamps = np.sort(df[timestamp_col].unique())
+    total = len(unique_timestamps)
+    val_size = splits.get("val_size", DEFAULT_SPLITS["val_size"])
+    test_size = splits.get("test_size", DEFAULT_SPLITS["test_size"])
+
+    train_cutoff = int(total * (1 - val_size - test_size))
+    val_cutoff = int(total * (1 - test_size))
+
+    train_times = set(unique_timestamps[:train_cutoff])
+    val_times = set(unique_timestamps[train_cutoff:val_cutoff])
+
+    def assign(ts):
+        if ts in train_times:
+            return "train"
+        if ts in val_times:
+            return "val"
+        return "test"
+
+    df["split"] = df[timestamp_col].apply(assign)
+    return df
+
+
+def _select_feature_columns(
+    df: pd.DataFrame,
+    target_col: str,
+    exclude: set,
+    config: Dict[str, Any],
+) -> List[str]:
+    candidate = config.get("features", {}).get("include")
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    disallowed = {target_col, "target_class", "split"}
+    disallowed.update(exclude)
+    disallowed.update(config.get("features", {}).get("exclude_auto", ["longitude", "latitude"]))
+    if candidate:
+        return [col for col in candidate if col in df.columns and col not in disallowed]
+    return [col for col in numeric_cols if col not in disallowed]
+
+
+def _build_sequence_datasets(
+    df: pd.DataFrame,
+    group_col: str,
+    timestamp_col: str,
+    feature_cols: Sequence[str],
+    target_col: str,
+    scaler: StandardScaler,
+    seq_len: int,
+    stride: int,
+) -> Dict[str, SequenceDataset]:
+    sequences: Dict[str, List[np.ndarray]] = {"train": [], "val": [], "test": []}
+    targets: Dict[str, List[float]] = {"train": [], "val": [], "test": []}
+    meta_frames: Dict[str, List[pd.DataFrame]] = {"train": [], "val": [], "test": []}
+
+    for region_id, region_df in df.groupby(group_col):
+        region_df = region_df.sort_values(timestamp_col).copy()
+        split_values = region_df["split"].values
+        features = scaler.transform(region_df[feature_cols])
+        target_values = region_df[target_col].values
+
+        for end_idx in range(seq_len - 1, len(region_df), stride):
+            start_idx = end_idx - seq_len + 1
+            window_split = split_values[start_idx : end_idx + 1]
+            if np.unique(window_split).size != 1:
+                continue
+            split_name = window_split[-1]
+            if split_name not in sequences:
+                continue
+
+            sequences[split_name].append(features[start_idx : end_idx + 1])
+            targets[split_name].append(target_values[end_idx])
+            meta_frames[split_name].append(
+                region_df.iloc[[end_idx]][[group_col, timestamp_col, "latitude", "longitude"]].copy()
+            )
+
+    sequence_datasets: Dict[str, SequenceDataset] = {}
+    for split_name in sequences.keys():
+        if sequences[split_name]:
+            feature_array = np.stack(sequences[split_name]).astype(np.float32)
+            target_array = np.asarray(targets[split_name], dtype=np.float32)
+            metadata = pd.concat(meta_frames[split_name], ignore_index=True)
+        else:
+            feature_array = np.empty((0, seq_len, len(feature_cols)), dtype=np.float32)
+            target_array = np.empty((0,), dtype=np.float32)
+            metadata = pd.DataFrame(columns=[group_col, timestamp_col, "latitude", "longitude"])
+
+        sequence_datasets[split_name] = SequenceDataset(
+            features=feature_array,
+            target=target_array,
+            metadata=metadata,
+        )
+
+    return sequence_datasets
+
+
+def _build_tabular_datasets(
+    df: pd.DataFrame,
+    feature_cols: Sequence[str],
+    target_col: str,
+    timestamp_col: str,
+    group_col: str,
+    sequence_metadata: Dict[str, pd.DataFrame],
+) -> Dict[str, TabularDataset]:
+    datasets: Dict[str, TabularDataset] = {}
+
+    for split_name in ("train", "val", "test"):
+        split_df = df[df["split"] == split_name].copy()
+        meta_df = sequence_metadata.get(split_name)
+
+        if meta_df is not None and not meta_df.empty:
+            meta_df = meta_df[[group_col, timestamp_col]].drop_duplicates()
+            keys = list(meta_df.itertuples(index=False, name=None))
+            multi_index = pd.MultiIndex.from_tuples(keys, names=[group_col, timestamp_col])
+            aligned = split_df.set_index([group_col, timestamp_col]).reindex(multi_index)
+            aligned = aligned.dropna(subset=[target_col], how="any")
+            split_df = aligned.reset_index()
+
+        split_df = split_df.fillna(0)
+        features = split_df[feature_cols].reset_index(drop=True)
+        target = split_df[target_col].reset_index(drop=True)
+        metadata = split_df[[group_col, timestamp_col, "latitude", "longitude"]].reset_index(drop=True)
+
+        datasets[split_name] = TabularDataset(
+            features=features,
+            target=target,
+            metadata=metadata,
+        )
+
+    return datasets
