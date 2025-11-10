@@ -18,6 +18,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from shapely.geometry import Point
 
+WORLD_GEOJSON_URL = (
+    "https://github.com/nvkelso/natural-earth-vector/raw/master/geojson/ne_110m_admin_0_countries.geojson"
+)
 
 def load_artifacts(artifacts_path: Path) -> pd.DataFrame:
     """
@@ -75,8 +78,8 @@ def aggregate_predictions(predictions: pd.DataFrame, split: str) -> pd.DataFrame
 
 
 def plot_map(predictions: pd.DataFrame, threshold: Optional[float], title: str) -> None:
-    world = gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
-    usa = world[world["name"] == "United States of America"]
+    world = gpd.read_file(WORLD_GEOJSON_URL)
+    usa = world[world["ADMIN"] == "United States of America"]
 
     geometry = [Point(xy) for xy in zip(predictions["longitude"], predictions["latitude"])]
     gdf = gpd.GeoDataFrame(predictions, geometry=geometry, crs="EPSG:4326")

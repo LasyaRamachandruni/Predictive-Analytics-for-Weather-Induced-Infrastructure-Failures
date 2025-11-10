@@ -468,10 +468,13 @@ def _parse_ghcn_daily(path: Path, start_date: pd.Timestamp, end_date: pd.Timesta
         df["awnd_ms"] = df["AWND"] / 10.0
 
     df["tavg_c"] = df.filter(items=["tmax_c", "tmin_c"]).mean(axis=1)
-    df = df[
-        ["timestamp", "tavg_c", "tmax_c", "tmin_c", "prcp_mm", "snow_mm", "snwd_mm", "awnd_ms"]
-    ]
-    return df
+    desired_columns = ["timestamp", "tavg_c", "tmax_c", "tmin_c", "prcp_mm", "snow_mm", "snwd_mm", "awnd_ms"]
+    available_columns = [col for col in desired_columns if col in df.columns]
+    missing_columns = set(desired_columns) - set(available_columns)
+    for col in missing_columns:
+        df[col] = np.nan
+        available_columns.append(col)
+    return df[available_columns]
 
 
 def _load_ghcn_weather(
