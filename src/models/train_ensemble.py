@@ -225,6 +225,19 @@ def apply_quick_run_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
     xgb_cfg["colsample_bytree"] = xgb_cfg.get("colsample_bytree", 0.8)
     xgb_cfg["random_state"] = xgb_cfg.get("random_state", 42)
 
+    sequence_cfg = cfg.setdefault("sequence", {})
+    seq_len = sequence_cfg.get("length", 24)
+    split_cfg = cfg.setdefault("split", {})
+    val_size = split_cfg.get("val_size", 0.15)
+    test_size = split_cfg.get("test_size", 0.15)
+    train_fraction = max(0.1, 1.0 - val_size - test_size)
+    feature_cfg = cfg.setdefault("features", {})
+    lags = feature_cfg.get("lags", [])
+    max_lag = max(lags) if lags else 0
+    available_steps = max(data_demo["periods"] - max_lag, 1)
+    max_train_window = max(int(available_steps * train_fraction), 1)
+    sequence_cfg["length"] = max(1, min(seq_len, max_train_window))
+
     return cfg
 
 

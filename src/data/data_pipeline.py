@@ -56,6 +56,28 @@ class PipelineArtifacts:
     metadata: Dict[str, Any]
 
 
+def _resolve_sequence_length(df: pd.DataFrame, group_col: str, requested: int) -> int:
+    """
+    Clamp the requested sequence length so at least one training window can be created.
+    """
+    if requested <= 1:
+        return max(1, requested)
+
+    train_df = df[df["split"] == "train"]
+    if train_df.empty:
+        return max(1, min(requested, len(df)))
+
+    train_counts = train_df.groupby(group_col).size()
+    if train_counts.empty:
+        return max(1, min(requested, len(df)))
+
+    max_train_count = int(train_counts.max())
+    if max_train_count <= 0:
+        return 1
+
+    return max(1, min(requested, max_train_count))
+
+
 def run_data_pipeline(config: Dict[str, Any], mode: str = "demo") -> PipelineArtifacts:
     """
     Execute the full data pipeline and return engineered datasets.
@@ -102,7 +124,8 @@ def run_data_pipeline(config: Dict[str, Any], mode: str = "demo") -> PipelineArt
     else:
         target_array_name = target_col
 
-    seq_len = config.get("sequence", {}).get("length", 24)
+    seq_len_requested = config.get("sequence", {}).get("length", 24)
+    seq_len = _resolve_sequence_length(split_df, group_col, seq_len_requested)
     stride = config.get("sequence", {}).get("stride", 1)
 
     sequences = _build_sequence_datasets(
@@ -130,6 +153,8 @@ def run_data_pipeline(config: Dict[str, Any], mode: str = "demo") -> PipelineArt
     metadata = {
         "group_column": group_col,
         "timestamp_column": timestamp_col,
+        "sequence_length_requested": seq_len_requested,
+        "sequence_length_used": seq_len,
         "tabular_sample_counts": {split: ds.features.shape[0] for split, ds in tabular.items()},
         "sequence_sample_counts": {split: ds.features.shape[0] for split, ds in sequences.items()},
     }
@@ -340,7 +365,7 @@ def _build_tabular_datasets(
         split_df = df[df["split"] == split_name].copy()
         meta_df = sequence_metadata.get(split_name)
 
-        if meta_df is not None and not meta_df.empty:
+        if meta_df is not None:
             meta_df = meta_df[[group_col, timestamp_col]].drop_duplicates()
             keys = list(meta_df.itertuples(index=False, name=None))
             multi_index = pd.MultiIndex.from_tuples(keys, names=[group_col, timestamp_col])
