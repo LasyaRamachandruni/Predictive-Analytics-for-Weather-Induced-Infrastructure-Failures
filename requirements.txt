@@ -3,15 +3,14 @@ pandas
 scikit-learn
 xgboost
 torch
-tensorflow
 matplotlib
 geopandas
 shapely
-rasterio
 pyproj
-jupyter
+pyyaml
 pytest
 black
 flake8
 tqdm
 seaborn
+joblib

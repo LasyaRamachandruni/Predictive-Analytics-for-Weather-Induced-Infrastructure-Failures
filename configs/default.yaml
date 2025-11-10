@@ -1,0 +1,93 @@
+experiment:
+  name: hybrid_weather_failure
+  mode: demo
+
+data:
+  group_column: region_id
+  timestamp_column: timestamp
+  demo:
+    num_regions: 8
+    start_date: "2024-01-01"
+    periods: 240
+    freq: 6H
+    base_failure_rate: 0.5
+    random_state: 42
+  real:
+    start_date: "2021-01-01"
+    end_date: "2024-12-31"
+    cache_dir: data/raw/real
+    storm_events:
+      years: [2021, 2022, 2023, 2024]
+    ghcn:
+      stations:
+        CA: USW00023234
+        TX: USW00013904
+        FL: USW00012839
+        NY: USW00094728
+        IL: USW00094846
+        GA: USW00053863
+        WA: USW00024233
+        AZ: USW00023183
+        NC: USW00013723
+        CO: USW00023062
+
+split:
+  val_size: 0.15
+  test_size: 0.15
+
+sequence:
+  length: 24
+  stride: 1
+  features: null  # auto-select from engineered features
+
+features:
+  include: null  # allow pipeline to infer numeric features
+  exclude_auto:
+    - longitude
+    - latitude
+  lags: [1, 3, 6, 12, 24]
+  rolling_windows: [3, 6, 12, 24]
+  rolling_statistics: [mean, max, std]
+  base_weather_cols: null
+
+target:
+  column: failures
+  type: regression
+  classification_threshold_percentile: 0.8
+
+training:
+  random_seed: 42
+  device: auto
+  lstm:
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.2
+    lr: 0.001
+    batch_size: 64
+    epochs: 25
+    patience: 5
+    min_delta: 0.0005
+    grad_clip: 1.0
+    progress_bar: true
+  tabular:
+    rf:
+      n_estimators: 400
+      max_depth: 12
+      min_samples_leaf: 2
+      n_jobs: -1
+      random_state: 42
+    xgb:
+      n_estimators: 500
+      learning_rate: 0.05
+      max_depth: 5
+      subsample: 0.9
+      colsample_bytree: 0.8
+      reg_lambda: 1.0
+      random_state: 42
+    blend_alpha: 0.5
+  ensemble:
+    weight_tabular: 0.5
+
+paths:
+  artifacts_dir: models
+  processed_data_dir: data/processed
