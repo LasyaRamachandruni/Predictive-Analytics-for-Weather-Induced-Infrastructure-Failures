@@ -4,26 +4,53 @@ Production-ready hybrid modelling pipeline that forecasts infrastructure failure
 
 ## Highlights
 - **Hybrid ensemble** blending a PyTorch LSTM (temporal sequences) with RandomForest + XGBoost on engineered tabular features.
+- **Comprehensive data sources**: Weather (NOAA GHCN), storm events, infrastructure age, population density, and economic indicators.
 - **Configurable data adapters** with a synthetic demo generator and pluggable hooks for real NOAA/ERA5/outage datasets.
 - **Feature engineering**: rolling stats, lagged impacts, vulnerability context, and sliding-window sequences.
 - **Artifacts**: saved weights, metrics JSON, prediction tables, and evaluation plots (actual vs predicted, residuals).
+- **Interactive Dashboard**: Web-based visualization with maps, charts, and predictions.
 - **Risk mapping**: choropleth-style point map of regional risk using GeoPandas.
 - **Quality gates**: pytest unit tests, black/flake8 compliant code.
 
 ## Quick Start
+
+### 1. Install Dependencies
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
+```
 
-# 2a. Train the hybrid ensemble on synthetic demo data
+### 2. Train the Model
+
+**Option A: Demo Data (Quick Test)**
+```bash
 python -m src.models.train_ensemble --config configs/default.yaml --mode demo
+```
 
-# 2b. (Optional) Pull NOAA + GHCN data and train on real events
+**Option B: Real Data (Production)**
+```bash
 python -m src.models.train_ensemble --config configs/default.yaml --mode real
+```
 
-# 3. Plot regional risk using the generated artifacts
+**Option C: Quick Run (Faster Testing)**
+```bash
+python -m src.models.train_ensemble --mode demo --quick-run
+```
+
+### 3. View Results
+
+**Interactive Dashboard (Recommended)**
+```bash
+python -m src.dashboard.app
+# Then open http://localhost:8050 in your browser
+# (Use localhost or 127.0.0.1, NOT 0.0.0.0)
+```
+
+**OR Command-Line Visualization**
+```bash
 python -m src.visualization.map_failures --artifacts models/latest/metrics.json
 ```
+
+📖 **For detailed instructions, see [docs/HOW_TO_RUN.md](docs/HOW_TO_RUN.md)**
 
 Artifacts are stored in `models/<run_name>_<timestamp>/` and mirrored to `models/latest/`. Metrics, predictions, and plots are ready for inspection immediately after training.
 
@@ -53,10 +80,35 @@ Override values via CLI-friendly YAML edits or create additional config files fo
    - `plot_results.py`: reusable actual-vs-predicted and residual plotting helpers.
    - `map_failures.py`: GeoPandas-based mapping fed by saved prediction tables.
 
-## Real Data Sources & Caching
+## Data Sources & Caching
+
+### Primary Data Sources (✅ Already Working - Real Data)
 - **Weather observations**: Global Historical Climatology Network (GHCN) daily station files from NOAA (`https://www.ncei.noaa.gov/pub/data/ghcn/daily/all/`).
-- **Infrastructure impact proxy**: NOAA Storm Events “details” files (`https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/`), aggregated to state/day with damage estimates used as the failure target.
-- Data is cached under `data/raw/real/` (configurable in `configs/default.yaml`) so repeated runs reuse downloads. Delete the directory to force a refresh.
+  - ✅ **Active**: 10 US weather stations, 2021-2024
+  - 🆕 **API Support**: Now supports NOAA APIs (CDO, NCEI) with automatic fallback to file downloads
+  - **See**: `docs/NOAA_DATASETS_DOCUMENTED.md` and `docs/NOAA_API_INTEGRATION.md`
+  
+- **Infrastructure impact proxy**: NOAA Storm Events "details" files (`https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/`), aggregated to state/day with damage estimates used as the failure target.
+  - ✅ **Active**: Storm events database, 2021-2024
+  - **Note**: Uses file downloads (no direct API available)
+  - **See**: `docs/NOAA_DATASETS_DOCUMENTED.md` for complete documentation
+
+### Additional Data Sources (New!)
+- **Infrastructure Age & Condition**: Average infrastructure age, maintenance scores, and condition ratings by region.
+- **Population Data**: Population density, urban percentage, and total population.
+- **Economic Indicators**: GDP per capita, infrastructure investment, and poverty rates.
+
+Data is cached under `data/raw/real/` (configurable in `configs/default.yaml`) so repeated runs reuse downloads. Delete the directory to force a refresh.
+
+**See `docs/ADDING_MORE_DATA.md` for details on adding more data sources.**
+
+**⚠️ Note**: The additional data sources (infrastructure age, population, economic) currently use placeholder values. 
+
+**🆕 Real API Integration**:
+- `docs/REAL_API_SOURCES_VERIFIED.md` - Verified government API sources (2024)
+- `docs/API_QUICK_START.md` - Get real data in 10 minutes
+- `docs/API_INTEGRATION_GUIDE.md` - Complete integration guide
+- `docs/DATA_SOURCES_EXPLAINED.md` - What's real vs fabricated
 
 ## Switching to Classification Mode
 Set `target.type: classification` in the config. The pipeline will:
@@ -102,7 +154,8 @@ This trims the synthetic dataset, reduces estimator counts, and limits LSTM epoc
 ```
 configs/           Default experiment configuration
 data/              Storage bucket for raw/processed data (gitignored)
-models/            Saved models, metrics, and plots
+docs/              Documentation (architecture, process flow, diagrams)
+models/            Saved models, metrics, and plots (gitignored)
 src/
   data/            Adapters and feature engineering
   models/          Model definitions and trainer CLI
@@ -110,6 +163,46 @@ src/
   visualization/   Plots and geospatial risk map
 tests/             Pytest suite
 ```
+
+## Interactive Dashboard
+
+The project includes an interactive Dash dashboard for visualizing predictions and model performance:
+
+```bash
+# Start the dashboard
+python -m src.dashboard.app
+```
+
+Then open your browser to `http://localhost:8050`
+
+**Features:**
+- 📊 Overview with summary statistics
+- 🗺️ Interactive risk map
+- 📈 Filterable predictions table and charts
+- 📉 Model performance metrics
+- 🔍 Model comparison visualizations
+
+See [docs/DASHBOARD.md](docs/DASHBOARD.md) for detailed dashboard documentation.
+
+## Documentation
+
+### 🆕 Start Here
+- **[PROJECT_EXPLAINED.md](docs/PROJECT_EXPLAINED.md)** - Simple, clear explanation of what the project does (perfect for understanding!)
+- **[NOAA_DATASETS_DOCUMENTED.md](docs/NOAA_DATASETS_DOCUMENTED.md)** - Complete documentation of NOAA datasets you're already using! ✅
+- **[NOAA_API_INTEGRATION.md](docs/NOAA_API_INTEGRATION.md)** - 🆕 Use NOAA APIs instead of file downloads! 🚀
+- **[API_QUICK_START.md](docs/API_QUICK_START.md)** - Get real API data in 10 minutes! 🚀
+- **[REAL_API_SOURCES_VERIFIED.md](docs/REAL_API_SOURCES_VERIFIED.md)** - Verified government API sources (2024)
+- **[ADDING_MORE_DATA.md](docs/ADDING_MORE_DATA.md)** - Comprehensive guide for adding more data sources
+
+### Technical Documentation
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design details
+- **[ARCHITECTURE_DIAGRAM.md](docs/ARCHITECTURE_DIAGRAM.md)** - Visual architecture diagrams
+- **[PROCESS_FLOW.md](docs/PROCESS_FLOW.md)** - Detailed step-by-step process documentation
+- **[PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)** - Project organization guide
+- **[DASHBOARD.md](docs/DASHBOARD.md)** - Interactive dashboard guide
+- **[REAL_DATA_GUIDE.md](docs/REAL_DATA_GUIDE.md)** - Guide for working with real NOAA data
+- **[HOW_TO_RUN.md](docs/HOW_TO_RUN.md)** - Complete step-by-step guide to running the code
+- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Common errors and solutions
 
 ## License
 [MIT License](LICENSE)

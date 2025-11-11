@@ -63,7 +63,12 @@ def load_threshold(artifacts_path: Path) -> Optional[float]:
 def aggregate_predictions(predictions: pd.DataFrame, split: str) -> pd.DataFrame:
     df = predictions if split == "all" else predictions[predictions["split"] == split]
     if df.empty:
-        raise ValueError(f"No prediction records found for split '{split}'.")
+        available_splits = predictions["split"].unique().tolist() if "split" in predictions.columns else []
+        raise ValueError(
+            f"No prediction records found for split '{split}'. "
+            f"Available splits: {available_splits if available_splits else 'none'}. "
+            f"Try using --split all or --split {available_splits[0] if available_splits else 'train'}"
+        )
     aggregated = (
         df.groupby("region_id")
         .agg(
@@ -128,7 +133,7 @@ def plot_map(predictions: pd.DataFrame, threshold: Optional[float], title: str) 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot infrastructure failure risk on a map.")
     parser.add_argument("--artifacts", default="models/latest/metrics.json", help="Path to metrics.json or artifact directory.")
-    parser.add_argument("--split", default="test", choices=["train", "val", "test", "all"], help="Prediction split to visualise.")
+    parser.add_argument("--split", default="all", choices=["train", "val", "test", "all"], help="Prediction split to visualise. Default: 'all'")
     parser.add_argument("--title", default="Infrastructure Failure Risk Map", help="Custom plot title.")
     return parser.parse_args()
 

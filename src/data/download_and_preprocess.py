@@ -163,10 +163,12 @@ def _load_demo_dataset(config: DemoDataConfig) -> pd.DataFrame:
     """
     rng = np.random.default_rng(config.random_state)
 
+    # Convert 'H' to 'h' to avoid deprecation warning
+    freq = config.freq.replace('H', 'h') if isinstance(config.freq, str) else config.freq
     timestamps = pd.date_range(
         start=config.start_date,
         periods=config.periods,
-        freq=config.freq,
+        freq=freq,
         inclusive="left",
     )
 
@@ -494,6 +496,7 @@ def _load_ghcn_weather(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     cache_dir: Path,
+    use_api: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Any]]]:
     station_map: Dict[str, str] = {}
     for region, data in stations.items():
@@ -509,11 +512,37 @@ def _load_ghcn_weather(
     coords: Dict[str, Dict[str, Any]] = {}
 
     for region_id, station_id in station_map.items():
-        station_path = _download_ghcn_station(station_id, cache_dir)
-        df = _parse_ghcn_daily(station_path, start_date, end_date)
+        df = pd.DataFrame()
+        
+        # Try API first if requested
+        if use_api:
+            try:
+                from .noaa_api_loaders import (
+                    load_ghcn_daily_via_cdo_api,
+                    load_ghcn_daily_via_api,
+                )
+                
+                # Try CDO API first (more commonly available)
+                df = load_ghcn_daily_via_cdo_api(station_id, start_date, end_date)
+                
+                # If CDO API fails, try NCEI Data Service API
+                if df.empty:
+                    df = load_ghcn_daily_via_api(station_id, start_date, end_date)
+                
+                if not df.empty:
+                    logger.info(f"✅ Loaded GHCN data via API for station {station_id} ({region_id})")
+            except ImportError:
+                logger.debug("NOAA API loaders not available, using file downloads")
+            except Exception as e:
+                logger.debug(f"API load failed for {station_id}: {e}. Falling back to file download.")
+        
+        # Fall back to file download if API didn't work
         if df.empty:
-            logger.warning("No GHCN data for station %s (%s)", station_id, region_id)
-            continue
+            station_path = _download_ghcn_station(station_id, cache_dir)
+            df = _parse_ghcn_daily(station_path, start_date, end_date)
+            if df.empty:
+                logger.warning("No GHCN data for station %s (%s)", station_id, region_id)
+                continue
 
         meta = station_metadata.get(station_id, {})
         coords[region_id] = {
@@ -553,7 +582,7 @@ def _combine_real_dataset(
     weather_cols = ["tavg_c", "tmax_c", "tmin_c", "prcp_mm", "snow_mm", "snwd_mm", "awnd_ms"]
     combined[weather_cols] = (
         combined.groupby("region_id")[weather_cols]
-        .apply(lambda group: group.fillna(method="ffill").fillna(method="bfill"))
+        .apply(lambda group: group.ffill().bfill())
         .reset_index(level=0, drop=True)
     )
 
@@ -605,9 +634,36 @@ def _load_real_dataset(config: Dict[str, Any]) -> pd.DataFrame:
     storm_files = _download_storm_events_files(storm_years, storm_cache)
     storm_df = _load_storm_events_dataset(storm_files, region_ids, start_date, end_date)
 
-    weather_df, coords = _load_ghcn_weather(stations_cfg, start_date, end_date, ghcn_cache)
+    # Try to use NOAA APIs if token is available, otherwise use file downloads
+    weather_df, coords = _load_ghcn_weather(stations_cfg, start_date, end_date, ghcn_cache, use_api=True)
 
     merged = _combine_real_dataset(weather_df, coords, storm_df, region_ids, start_date, end_date)
     merged["timestamp"] = pd.to_datetime(merged["timestamp"])
+
+    # Add additional data sources (infrastructure age, population, economic)
+    try:
+        from .additional_sources import (
+            load_infrastructure_age_data,
+            load_population_data,
+            load_economic_data,
+        )
+
+        logger.info("Loading additional data sources...")
+        infrastructure_df = load_infrastructure_age_data(region_ids)
+        population_df = load_population_data(region_ids)
+        economic_df = load_economic_data(region_ids)
+
+        # Merge static features (same for all timestamps per region)
+        merged = merged.merge(infrastructure_df, on="region_id", how="left")
+        merged = merged.merge(population_df, on="region_id", how="left")
+        merged = merged.merge(economic_df, on="region_id", how="left")
+
+        logger.info(
+            f"Added {len(infrastructure_df.columns) + len(population_df.columns) + len(economic_df.columns)} additional features"
+        )
+    except ImportError:
+        logger.warning("Could not import additional_sources module. Skipping additional data.")
+    except Exception as e:
+        logger.warning(f"Error loading additional data sources: {e}. Continuing without them.")
 
     return merged

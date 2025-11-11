@@ -1,0 +1,2 @@
+"""Dashboard module for interactive visualization."""
+

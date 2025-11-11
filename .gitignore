@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific
+# Keep only latest model run, ignore timestamped runs
+models/hybrid_weather_failure_*/
+!models/latest/

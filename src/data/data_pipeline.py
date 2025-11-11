@@ -227,28 +227,51 @@ def _engineer_features(
     else:
         base_weather_cols = [col for col in numeric_cols if col not in {target_col, "longitude", "latitude"}]
 
+    # Collect new feature columns to avoid DataFrame fragmentation
+    new_features = {}
+    
+    # Target lag features
     for lag in lag_steps:
-        df[f"{target_col}_lag_{lag}"] = df.groupby(group_col)[target_col].shift(lag)
+        new_features[f"{target_col}_lag_{lag}"] = df.groupby(group_col)[target_col].shift(lag)
 
+    # Weather column lag and rolling features
     for column in base_weather_cols:
         for lag in lag_steps:
-            df[f"{column}_lag_{lag}"] = df.groupby(group_col)[column].shift(lag)
+            new_features[f"{column}_lag_{lag}"] = df.groupby(group_col)[column].shift(lag)
 
         for window in rolling_windows:
             rolled = df.groupby(group_col)[column].rolling(window=window, min_periods=1)
             if "mean" in rolling_stats:
-                df[f"{column}_rollmean_{window}"] = rolled.mean().reset_index(level=0, drop=True)
+                new_features[f"{column}_rollmean_{window}"] = rolled.mean().reset_index(level=0, drop=True)
             if "max" in rolling_stats:
-                df[f"{column}_rollmax_{window}"] = rolled.max().reset_index(level=0, drop=True)
+                new_features[f"{column}_rollmax_{window}"] = rolled.max().reset_index(level=0, drop=True)
             if "std" in rolling_stats:
-                df[f"{column}_rollstd_{window}"] = rolled.std(ddof=0).reset_index(level=0, drop=True)
+                new_features[f"{column}_rollstd_{window}"] = rolled.std(ddof=0).reset_index(level=0, drop=True)
 
-    df[f"{target_col}_diff_1"] = df.groupby(group_col)[target_col].diff()
-    df[f"{target_col}_pct_change"] = (
+    # Target difference and percentage change
+    new_features[f"{target_col}_diff_1"] = df.groupby(group_col)[target_col].diff()
+    new_features[f"{target_col}_pct_change"] = (
         df.groupby(group_col)[target_col].pct_change().replace([np.inf, -np.inf], 0.0).fillna(0.0)
     )
 
-    df.dropna(inplace=True)
+    # Add all new features at once using concat to avoid fragmentation
+    if new_features:
+        new_features_df = pd.DataFrame(new_features, index=df.index)
+        df = pd.concat([df, new_features_df], axis=1)
+    
+    # Fill NaN values in lag features with 0 (represents "no previous value")
+    lag_suffixes = tuple([f"_lag_{lag}" for lag in lag_steps])
+    lag_feature_cols = [col for col in df.columns if col.endswith(lag_suffixes)]
+    if lag_feature_cols:
+        df[lag_feature_cols] = df[lag_feature_cols].fillna(0.0)
+    
+    # Fill NaN in diff_1 with 0 (no change from previous)
+    if f"{target_col}_diff_1" in df.columns:
+        df[f"{target_col}_diff_1"] = df[f"{target_col}_diff_1"].fillna(0.0)
+    
+    # Only drop rows where essential columns (target, group, timestamp) are NaN
+    essential_cols = [target_col, group_col, timestamp_col]
+    df = df.dropna(subset=essential_cols)
     df.reset_index(drop=True, inplace=True)
     return df
 
@@ -265,14 +288,21 @@ def _assign_splits(df: pd.DataFrame, timestamp_col: str, splits: Dict[str, float
 
     train_cutoff = int(total * (1 - val_size - test_size))
     val_cutoff = int(total * (1 - test_size))
+    
+    # Ensure at least one timestamp in train set
+    if train_cutoff == 0:
+        train_cutoff = max(1, total - int(total * (val_size + test_size)))
+    if val_cutoff <= train_cutoff:
+        val_cutoff = min(total, train_cutoff + max(1, int(total * val_size)))
 
-    train_times = set(unique_timestamps[:train_cutoff])
-    val_times = set(unique_timestamps[train_cutoff:val_cutoff])
+    train_times = set(pd.to_datetime(unique_timestamps[:train_cutoff]))
+    val_times = set(pd.to_datetime(unique_timestamps[train_cutoff:val_cutoff]))
 
     def assign(ts):
-        if ts in train_times:
+        ts_dt = pd.to_datetime(ts)
+        if ts_dt in train_times:
             return "train"
-        if ts in val_times:
+        if ts_dt in val_times:
             return "val"
         return "test"
 
