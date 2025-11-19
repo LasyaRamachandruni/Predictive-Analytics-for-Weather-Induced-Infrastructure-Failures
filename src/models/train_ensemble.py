@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train hybrid ensemble for infrastructure failure prediction.")
     parser.add_argument("--config", default="configs/default.yaml", help="Path to YAML config.")
-    parser.add_argument("--mode", choices=["demo", "real"], help="Data loading mode override.")
+    parser.add_argument("--mode", choices=["real"], default="real", help="Data loading mode (only 'real' is supported).")
     parser.add_argument("--run-name", default=None, help="Optional name prefix for the artifact run directory.")
     parser.add_argument("--quick-run", action="store_true", help="Use reduced settings for fast smoke tests.")
     parser.add_argument("--output-dir", default=None, help="Override artifact root directory.")
@@ -199,9 +199,7 @@ def compute_metrics(
 
 def apply_quick_run_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
     cfg = deepcopy(config)
-    data_demo = cfg.setdefault("data", {}).setdefault("demo", {})
-    data_demo["periods"] = min(data_demo.get("periods", 180), 72)
-    data_demo["num_regions"] = min(data_demo.get("num_regions", 6), 3)
+    # Quick run overrides for real data mode only
 
     training_cfg = cfg.setdefault("training", {})
     lstm_cfg = training_cfg.setdefault("lstm", {})
@@ -234,7 +232,8 @@ def apply_quick_run_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
     feature_cfg = cfg.setdefault("features", {})
     lags = feature_cfg.get("lags", [])
     max_lag = max(lags) if lags else 0
-    available_steps = max(data_demo["periods"] - max_lag, 1)
+    # For real data, use available data size (no artificial limits)
+    available_steps = 1000  # Reasonable default for quick runs
     max_train_window = max(int(available_steps * train_fraction), 1)
     sequence_cfg["length"] = max(1, min(seq_len, max_train_window))
 
@@ -449,7 +448,7 @@ def main() -> None:
         logger.info("Applying quick-run overrides.")
         config = apply_quick_run_overrides(config)
 
-    mode = args.mode or config.get("experiment", {}).get("mode", "demo")
+    mode = args.mode or config.get("experiment", {}).get("mode", "real")
     if mode == "real":
         cache_dir = config.get("data", {}).get("real", {}).get("cache_dir", "data/raw/real")
         logger.info(

@@ -1,17 +1,10 @@
 experiment:
   name: hybrid_weather_failure
-  mode: demo
+  mode: real
 
 data:
   group_column: region_id
   timestamp_column: timestamp
-  demo:
-    num_regions: 8
-    start_date: "2024-01-01"
-    periods: 240
-    freq: 6H
-    base_failure_rate: 0.5
-    random_state: 42
   real:
     start_date: "2021-01-01"
     end_date: "2024-12-31"

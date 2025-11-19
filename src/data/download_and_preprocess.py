@@ -1,11 +1,8 @@
 """
 Data adapters for weather and infrastructure datasets.
 
-Two modes are supported:
-
-1. `demo` – synthetic data generator so the repository runs offline.
-2. `real` – downloads NOAA Storm Events (infrastructure impact proxy) and
-   NOAA GHCN daily weather observations to build an aligned, real-world dataset.
+Downloads real-world data from NOAA Storm Events (infrastructure impact proxy) and
+NOAA GHCN daily weather observations to build an aligned, real-world dataset.
 """
 
 from __future__ import annotations
@@ -14,7 +11,6 @@ import logging
 import math
 import re
 import shutil
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -111,127 +107,38 @@ DEFAULT_REAL_CONFIG = {
 }
 
 
-@dataclass
-class DemoDataConfig:
-    """Configuration used for generating demo data."""
-
-    num_regions: int = 6
-    start_date: str = "2024-01-01"
-    periods: int = 180
-    freq: str = "6H"
-    base_failure_rate: float = 0.4
-    temperature_mean: float = 55.0
-    precipitation_scale: float = 3.0
-    wind_scale: float = 15.0
-    random_state: int = DEFAULT_RANDOM_SEED
-
-
-def load_dataset(mode: str = "demo", config: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
+def load_dataset(mode: str = "real", config: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
     """
     Load the aligned dataset with columns `[region_id, timestamp, features..., failures]`.
+    
+    Only real data mode is supported. Downloads NOAA Storm Events and GHCN weather data.
+    
+    Parameters
+    ----------
+    mode : str
+        Must be "real" (only real API data is supported)
+    config : dict, optional
+        Configuration dictionary with "real" key containing real data settings
+        
+    Returns
+    -------
+    pd.DataFrame
+        Dataset with weather and infrastructure failure data
     """
-    config = config or {}
-
-    if mode == "demo":
-        demo_cfg = DemoDataConfig(**config.get("demo", {}))
-        return _load_demo_dataset(demo_cfg)
-
-    if mode == "real":
-        merged = _load_real_dataset(config.get("real", {}))
-        logger.info(
-            "Loaded real dataset with %s rows across %s regions.",
-            len(merged),
-            merged["region_id"].nunique(),
+    if mode != "real":
+        raise ValueError(
+            f"Only 'real' mode is supported. Demo/synthetic data has been removed. "
+            f"Received mode: {mode}"
         )
-        return merged
-
-    raise ValueError(f"Unsupported data loading mode: {mode}")
-
-
-# ---------------------------------------------------------------------------
-# Demo dataset (synthetic)
-# ---------------------------------------------------------------------------
-
-
-def _load_demo_dataset(config: DemoDataConfig) -> pd.DataFrame:
-    """
-    Generate an aligned synthetic dataset covering multiple regions.
-
-    The generated features include temperature, humidity, precipitation, wind, and
-    social vulnerability indicators. The target variable `failures` is simulated to
-    correlate with extreme weather conditions and vulnerability.
-    """
-    rng = np.random.default_rng(config.random_state)
-
-    # Convert 'H' to 'h' to avoid deprecation warning
-    freq = config.freq.replace('H', 'h') if isinstance(config.freq, str) else config.freq
-    timestamps = pd.date_range(
-        start=config.start_date,
-        periods=config.periods,
-        freq=freq,
-        inclusive="left",
+    
+    config = config or {}
+    merged = _load_real_dataset(config.get("real", {}))
+    logger.info(
+        "Loaded real dataset with %s rows across %s regions.",
+        len(merged),
+        merged["region_id"].nunique(),
     )
-
-    region_ids = [f"Region_{i:02d}" for i in range(config.num_regions)]
-    latitudes = rng.uniform(30, 47, size=config.num_regions)
-    longitudes = rng.uniform(-105, -70, size=config.num_regions)
-    elevation = rng.normal(loc=250, scale=120, size=config.num_regions).clip(min=5)
-    svi_scores = rng.uniform(0.1, 0.9, size=config.num_regions)
-
-    records = []
-    for region_idx, region_id in enumerate(region_ids):
-        phase_shift = rng.uniform(0, 2 * np.pi)
-        baseline_temp = config.temperature_mean + rng.normal(0, 5)
-        region_variability = rng.uniform(0.8, 1.2)
-        svi = svi_scores[region_idx]
-        elev = elevation[region_idx]
-        lon = longitudes[region_idx]
-        lat = latitudes[region_idx]
-
-        for step, ts in enumerate(timestamps):
-            seasonal_component = 15 * np.sin((2 * np.pi * step / 24) + phase_shift)
-            temp = baseline_temp + seasonal_component + rng.normal(0, 2)
-            humidity = np.clip(55 + rng.normal(0, 10) + 0.3 * (70 - temp), 10, 100)
-            precipitation = np.clip(rng.gamma(shape=2.0, scale=config.precipitation_scale) - 1.5, 0, None)
-            wind_speed = np.clip(rng.normal(loc=12, scale=config.wind_scale / 3), 0, None)
-            extreme_event = rng.random() < 0.05
-            snow_depth = max(0.0, rng.normal(0.5, 1.0) if temp < 32 else 0)
-
-            failure_intensity = (
-                config.base_failure_rate * region_variability
-                + 0.08 * precipitation
-                + 0.05 * max(0, wind_speed - 20)
-                + 0.03 * (humidity / 100)
-                + 1.5 * extreme_event
-                + 0.4 * (1 - np.tanh((temp - 40) / 15) ** 2)
-                + 0.6 * svi
-                + 0.001 * elev
-            )
-
-            failures = float(rng.poisson(lam=max(failure_intensity, 0.05)))
-
-            records.append(
-                {
-                    "region_id": region_id,
-                    "timestamp": ts,
-                    "temperature": temp,
-                    "humidity": humidity,
-                    "precipitation": precipitation,
-                    "wind_speed": wind_speed,
-                    "extreme_event": int(extreme_event),
-                    "snow_depth": snow_depth,
-                    "svi": svi,
-                    "elevation": elev,
-                    "longitude": lon,
-                    "latitude": lat,
-                    "failures": failures,
-                }
-            )
-
-    df = pd.DataFrame.from_records(records)
-    df.sort_values(by=["region_id", "timestamp"], inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    return df
+    return merged
 
 
 # ---------------------------------------------------------------------------

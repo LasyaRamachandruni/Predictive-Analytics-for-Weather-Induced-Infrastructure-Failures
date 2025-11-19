@@ -98,102 +98,94 @@ def load_infrastructure_age_data(regions: List[str]) -> pd.DataFrame:
 
 def load_population_data(regions: List[str], use_api: bool = True) -> pd.DataFrame:
     """
-    Load population density and demographic data.
+    Load population density and demographic data from Census API.
     
-    Tries to use Census API if available, otherwise falls back to placeholder data.
-    See docs/API_INTEGRATION_GUIDE.md for setup instructions.
+    Requires CENSUS_API_KEY environment variable. See docs/API_INTEGRATION_GUIDE.md for setup.
     
     Parameters
     ----------
     regions: List of region IDs (state codes)
-    use_api: If True, try to use Census API (requires CENSUS_API_KEY env var)
+    use_api: Must be True (API is required)
     
     Returns
     -------
     DataFrame with columns: region_id, population_density, urban_percentage, total_population
-    """
-    # Try API first if requested
-    if use_api:
-        try:
-            from .api_loaders import load_population_data_census
-            api_df = load_population_data_census(regions)
-            if not api_df.empty:
-                logger.info("Using real Census API data for population")
-                return api_df
-        except ImportError:
-            logger.debug("api_loaders module not available")
-        except Exception as e:
-            logger.warning(f"Failed to load Census API data: {e}. Using placeholder data.")
     
-    # Fall back to placeholder data
-    logger.info("Using placeholder population data. See docs/API_INTEGRATION_GUIDE.md for real API setup.")
-    data = []
-    for region in regions:
-        info = POPULATION_DATA.get(
-            region, {"density": 100.0, "urban_pct": 75.0, "total_pop": 5000000}
-        )
-        data.append(
-            {
-                "region_id": region,
-                "population_density": info["density"],
-                "urban_percentage": info["urban_pct"],
-                "total_population": info["total_pop"],
-            }
-        )
-    return pd.DataFrame(data)
+    Raises
+    ------
+    RuntimeError: If API data cannot be loaded
+    """
+    if not use_api:
+        raise ValueError("API data is required. Set use_api=True and configure CENSUS_API_KEY.")
+    
+    try:
+        from .api_loaders import load_population_data_census
+        api_df = load_population_data_census(regions)
+        if not api_df.empty:
+            logger.info("Using real Census API data for population")
+            return api_df
+        else:
+            raise RuntimeError(
+                "Census API returned empty data. Please check your CENSUS_API_KEY and ensure it's activated. "
+                "See docs/API_INTEGRATION_GUIDE.md for setup instructions."
+            )
+    except ImportError:
+        raise RuntimeError("api_loaders module not available. Cannot load Census data.")
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load Census API data: {e}. "
+            "Please configure CENSUS_API_KEY environment variable. "
+            "See docs/API_INTEGRATION_GUIDE.md for setup instructions."
+        ) from e
 
 
 def load_economic_data(regions: List[str], use_api: bool = True) -> pd.DataFrame:
     """
-    Load economic indicators.
+    Load economic indicators from BEA or FRED API.
     
-    Tries to use BEA or FRED API if available, otherwise falls back to placeholder data.
-    See docs/API_INTEGRATION_GUIDE.md for setup instructions.
+    Requires BEA_API_KEY or FRED_API_KEY environment variable. See docs/API_INTEGRATION_GUIDE.md for setup.
     
     Parameters
     ----------
     regions: List of region IDs (state codes)
-    use_api: If True, try to use BEA/FRED API (requires API keys in env vars)
+    use_api: Must be True (API is required)
     
     Returns
     -------
     DataFrame with columns: region_id, gdp_per_capita, infrastructure_investment, poverty_rate
-    """
-    # Try API first if requested
-    if use_api:
-        try:
-            from .api_loaders import load_economic_data_bea, load_economic_data_fred
-            # Try BEA first
-            api_df = load_economic_data_bea(regions)
-            if not api_df.empty:
-                logger.info("Using real BEA API data for economic indicators")
-                return api_df
-            # Try FRED as fallback
-            api_df = load_economic_data_fred(regions)
-            if not api_df.empty:
-                logger.info("Using real FRED API data for economic indicators")
-                return api_df
-        except ImportError:
-            logger.debug("api_loaders module not available")
-        except Exception as e:
-            logger.warning(f"Failed to load economic API data: {e}. Using placeholder data.")
     
-    # Fall back to placeholder data
-    logger.info("Using placeholder economic data. See docs/API_INTEGRATION_GUIDE.md for real API setup.")
-    data = []
-    for region in regions:
-        info = ECONOMIC_DATA.get(
-            region, {"gdp_per_capita": 60.0, "infrastructure_investment": 10.0, "poverty_rate": 12.0}
-        )
-        data.append(
-            {
-                "region_id": region,
-                "gdp_per_capita": info["gdp_per_capita"],
-                "infrastructure_investment": info["infrastructure_investment"],
-                "poverty_rate": info["poverty_rate"],
-            }
-        )
-    return pd.DataFrame(data)
+    Raises
+    ------
+    RuntimeError: If API data cannot be loaded
+    """
+    if not use_api:
+        raise ValueError("API data is required. Set use_api=True and configure BEA_API_KEY or FRED_API_KEY.")
+    
+    try:
+        from .api_loaders import load_economic_data_bea, load_economic_data_fred
+        # Try BEA first
+        api_df = load_economic_data_bea(regions)
+        if not api_df.empty:
+            logger.info("Using real BEA API data for economic indicators")
+            return api_df
+        # Try FRED as fallback
+        api_df = load_economic_data_fred(regions)
+        if not api_df.empty:
+            logger.info("Using real FRED API data for economic indicators")
+            return api_df
+        else:
+            raise RuntimeError(
+                "Both BEA and FRED APIs returned empty data. Please check your API keys (BEA_API_KEY or FRED_API_KEY) "
+                "and ensure they're activated. See docs/API_INTEGRATION_GUIDE.md for setup instructions."
+            )
+    except ImportError:
+        raise RuntimeError("api_loaders module not available. Cannot load economic data.")
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load economic API data: {e}. "
+            "Please configure BEA_API_KEY or FRED_API_KEY environment variable. "
+            "See docs/API_INTEGRATION_GUIDE.md for setup instructions."
+        ) from e
 
 
 def load_power_outage_data(

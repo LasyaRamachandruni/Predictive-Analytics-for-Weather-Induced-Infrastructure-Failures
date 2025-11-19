@@ -1,11 +1,11 @@
 # Predicting Weather-Induced Infrastructure Failures
 
-Production-ready hybrid modelling pipeline that forecasts infrastructure failures driven by weather extremes. The repository ships with synthetic demo data so the full workflow—data ingestion, feature engineering, model training, evaluation, and geospatial visualisation—runs out of the box.
+Production-ready hybrid modelling pipeline that forecasts infrastructure failures driven by weather extremes. Uses real-world data from NOAA APIs, US Census, BEA, and FRED for comprehensive, credible predictions.
 
 ## Highlights
 - **Hybrid ensemble** blending a PyTorch LSTM (temporal sequences) with RandomForest + XGBoost on engineered tabular features.
 - **Comprehensive data sources**: Weather (NOAA GHCN), storm events, infrastructure age, population density, and economic indicators.
-- **Configurable data adapters** with a synthetic demo generator and pluggable hooks for real NOAA/ERA5/outage datasets.
+- **Real API data integration**: NOAA weather and storm events, US Census demographics, BEA/FRED economic indicators.
 - **Feature engineering**: rolling stats, lagged impacts, vulnerability context, and sliding-window sequences.
 - **Artifacts**: saved weights, metrics JSON, prediction tables, and evaluation plots (actual vs predicted, residuals).
 - **Interactive Dashboard**: Web-based visualization with maps, charts, and predictions.
@@ -19,24 +19,31 @@ Production-ready hybrid modelling pipeline that forecasts infrastructure failure
 pip install -r requirements.txt
 ```
 
-### 2. Train the Model
+### 2. Configure API Keys
 
-**Option A: Demo Data (Quick Test)**
+Create a `.env` file in the project root with your API keys:
 ```bash
-python -m src.models.train_ensemble --config configs/default.yaml --mode demo
+NOAA_API_TOKEN=your_noaa_token_here
+CENSUS_API_KEY=your_census_key_here
+BEA_API_KEY=your_bea_key_here
+FRED_API_KEY=your_fred_key_here
 ```
 
-**Option B: Real Data (Production)**
+See [docs/API_QUICK_START.md](docs/API_QUICK_START.md) for detailed setup instructions.
+
+### 3. Train the Model
+
+**Full Training:**
 ```bash
 python -m src.models.train_ensemble --config configs/default.yaml --mode real
 ```
 
-**Option C: Quick Run (Faster Testing)**
+**Quick Run (Faster Testing):**
 ```bash
-python -m src.models.train_ensemble --mode demo --quick-run
+python -m src.models.train_ensemble --mode real --quick-run
 ```
 
-### 3. View Results
+### 4. View Results
 
 **Interactive Dashboard (Recommended)**
 ```bash
@@ -56,19 +63,20 @@ Artifacts are stored in `models/<run_name>_<timestamp>/` and mirrored to `models
 
 ## Configuration
 All behaviour is driven from `configs/default.yaml`:
-- `data.*`: loader settings, including the demo generator parameters and time alignment options.
+- `data.*`: real data loader settings (NOAA Storm Events, GHCN weather stations, API configurations).
 - `features.*`: lags, rolling windows, and base weather columns for engineering.
 - `sequence.*`: sequence length & stride for the LSTM windows.
 - `target.*`: choose `regression` or `classification` (80th percentile threshold by default).
 - `training.*`: LSTM hyperparameters, tabular model grids, ensemble weights, device selection.
 - `paths.*`: where to place artifacts and processed data.
 
-Override values via CLI-friendly YAML edits or create additional config files for experiments. Use `--mode real` once real adapters are wired (see below).
+Override values via CLI-friendly YAML edits or create additional config files for experiments.
 
 ## Pipeline Overview
 1. **Data adapters (`src/data/download_and_preprocess.py`)**
-   - `demo` mode fabricates weather + failure sequences across multiple regions with injected seasonality, extremes, and SVI context.
-   - `real` mode downloads NOAA Storm Events damage reports and GHCN daily observations, aggregates them to state/day, and caches the raw files automatically.
+   - Downloads NOAA Storm Events damage reports and GHCN daily weather observations via APIs
+   - Aggregates data to state/day level and caches raw files automatically
+   - Integrates additional data sources: Census demographics, BEA/FRED economic indicators
 2. **Feature engineering (`src/data/data_pipeline.py`)**
    - Continuous timeline alignment, missing data imputation, rolling means/max/std, lag features, growth rates, and deterministic time-based splits.
    - Builds both tabular matrices and scaled sliding-window tensors with aligned metadata for ensembling.
@@ -102,7 +110,7 @@ Data is cached under `data/raw/real/` (configurable in `configs/default.yaml`) s
 
 **See `docs/ADDING_MORE_DATA.md` for details on adding more data sources.**
 
-**⚠️ Note**: The additional data sources (infrastructure age, population, economic) currently use placeholder values. 
+**✅ Real API Data**: All data sources use real APIs (NOAA, Census, BEA, FRED). API keys are required - see setup instructions above. 
 
 **🆕 Real API Integration**:
 - `docs/REAL_API_SOURCES_VERIFIED.md` - Verified government API sources (2024)

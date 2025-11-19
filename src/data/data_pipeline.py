@@ -78,7 +78,7 @@ def _resolve_sequence_length(df: pd.DataFrame, group_col: str, requested: int) -
     return max(1, min(requested, max_train_count))
 
 
-def run_data_pipeline(config: Dict[str, Any], mode: str = "demo") -> PipelineArtifacts:
+def run_data_pipeline(config: Dict[str, Any], mode: str = "real") -> PipelineArtifacts:
     """
     Execute the full data pipeline and return engineered datasets.
     """

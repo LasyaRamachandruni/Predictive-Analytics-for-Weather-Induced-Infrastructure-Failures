@@ -24,7 +24,11 @@ WORLD_GEOJSON_URL = (
 
 def load_artifacts(artifacts_path: Path) -> pd.DataFrame:
     """
-    Load predictions from the artifact directory. Falls back to synthetic data if missing.
+    Load predictions from the artifact directory.
+    
+    Raises
+    ------
+    FileNotFoundError: If predictions.csv is not found
     """
     if artifacts_path.is_file():
         artifact_dir = artifacts_path.parent
@@ -35,20 +39,10 @@ def load_artifacts(artifacts_path: Path) -> pd.DataFrame:
     if predictions_path.exists():
         return pd.read_csv(predictions_path, parse_dates=["timestamp"])
 
-    # Fallback synthetic data
-    rng = pd.Series(range(12))
-    demo = pd.DataFrame(
-        {
-            "region_id": [f"Region_{i:02d}" for i in range(12)],
-            "timestamp": pd.Timestamp("2024-01-01"),
-            "latitude": 30 + rng * 1.2,
-            "longitude": -100 + rng * 1.1,
-            "hybrid_pred": 1 + rng * 0.3,
-            "hybrid_class": (rng % 2).astype(int),
-            "split": "test",
-        }
+    raise FileNotFoundError(
+        f"Predictions file not found at {predictions_path}. "
+        "Please train a model first using: python -m src.models.train_ensemble --mode real"
     )
-    return demo
 
 
 def load_threshold(artifacts_path: Path) -> Optional[float]:
