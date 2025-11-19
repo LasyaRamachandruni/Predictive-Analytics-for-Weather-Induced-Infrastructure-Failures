@@ -32,6 +32,16 @@ INFRASTRUCTURE_AGE_DATA = {
     "AZ": {"age": 26, "maintenance_score": 7.1, "condition_rating": 7.1},
     "NC": {"age": 28, "maintenance_score": 6.9, "condition_rating": 6.9},
     "CO": {"age": 24, "maintenance_score": 7.3, "condition_rating": 7.3},
+    "PA": {"age": 33, "maintenance_score": 6.1, "condition_rating": 6.1},
+    "OH": {"age": 31, "maintenance_score": 6.4, "condition_rating": 6.4},
+    "MI": {"age": 29, "maintenance_score": 6.6, "condition_rating": 6.6},
+    "MA": {"age": 34, "maintenance_score": 6.3, "condition_rating": 6.3},
+    "OR": {"age": 27, "maintenance_score": 7.0, "condition_rating": 7.0},
+    "TN": {"age": 26, "maintenance_score": 7.1, "condition_rating": 7.1},
+    "IN": {"age": 28, "maintenance_score": 6.8, "condition_rating": 6.8},
+    "MO": {"age": 30, "maintenance_score": 6.5, "condition_rating": 6.5},
+    "MD": {"age": 32, "maintenance_score": 6.2, "condition_rating": 6.2},
+    "WI": {"age": 28, "maintenance_score": 6.9, "condition_rating": 6.9},
 }
 
 # Population density estimates (people per square mile)
@@ -47,6 +57,16 @@ POPULATION_DATA = {
     "AZ": {"density": 65.3, "urban_pct": 89.8, "total_pop": 7151502},
     "NC": {"density": 218.0, "urban_pct": 66.1, "total_pop": 10439388},
     "CO": {"density": 56.9, "urban_pct": 86.2, "total_pop": 5773714},
+    "PA": {"density": 290.0, "urban_pct": 78.7, "total_pop": 13002700},
+    "OH": {"density": 282.3, "urban_pct": 77.9, "total_pop": 11799448},
+    "MI": {"density": 174.8, "urban_pct": 74.4, "total_pop": 10037261},
+    "MA": {"density": 890.3, "urban_pct": 92.0, "total_pop": 7029917},
+    "OR": {"density": 45.2, "urban_pct": 81.2, "total_pop": 4237256},
+    "TN": {"density": 166.0, "urban_pct": 66.4, "total_pop": 6910840},
+    "IN": {"density": 188.1, "urban_pct": 72.4, "total_pop": 6785528},
+    "MO": {"density": 89.3, "urban_pct": 70.4, "total_pop": 6177957},
+    "MD": {"density": 636.1, "urban_pct": 87.2, "total_pop": 6177224},
+    "WI": {"density": 108.2, "urban_pct": 70.2, "total_pop": 5893718},
 }
 
 # GDP per capita estimates (thousands USD)
@@ -62,6 +82,16 @@ ECONOMIC_DATA = {
     "AZ": {"gdp_per_capita": 55.8, "infrastructure_investment": 8.5, "poverty_rate": 12.8},
     "NC": {"gdp_per_capita": 59.7, "infrastructure_investment": 9.1, "poverty_rate": 12.9},
     "CO": {"gdp_per_capita": 73.5, "infrastructure_investment": 11.9, "poverty_rate": 9.3},
+    "PA": {"gdp_per_capita": 68.2, "infrastructure_investment": 11.5, "poverty_rate": 11.8},
+    "OH": {"gdp_per_capita": 64.8, "infrastructure_investment": 10.2, "poverty_rate": 12.6},
+    "MI": {"gdp_per_capita": 61.5, "infrastructure_investment": 9.5, "poverty_rate": 13.1},
+    "MA": {"gdp_per_capita": 83.1, "infrastructure_investment": 13.8, "poverty_rate": 9.4},
+    "OR": {"gdp_per_capita": 66.7, "infrastructure_investment": 10.5, "poverty_rate": 11.2},
+    "TN": {"gdp_per_capita": 60.3, "infrastructure_investment": 9.0, "poverty_rate": 13.1},
+    "IN": {"gdp_per_capita": 63.9, "infrastructure_investment": 9.7, "poverty_rate": 12.2},
+    "MO": {"gdp_per_capita": 59.2, "infrastructure_investment": 8.8, "poverty_rate": 12.7},
+    "MD": {"gdp_per_capita": 78.6, "infrastructure_investment": 12.8, "poverty_rate": 9.0},
+    "WI": {"gdp_per_capita": 65.4, "infrastructure_investment": 10.3, "poverty_rate": 10.4},
 }
 
 

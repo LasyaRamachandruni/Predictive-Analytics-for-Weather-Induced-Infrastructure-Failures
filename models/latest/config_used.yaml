@@ -1,11 +1,4 @@
 data:
-  demo:
-    base_failure_rate: 0.5
-    freq: 6H
-    num_regions: 8
-    periods: 240
-    random_state: 42
-    start_date: '2024-01-01'
   group_column: region_id
   real:
     cache_dir: data/raw/real
@@ -18,20 +11,33 @@ data:
         FL: USW00012839
         GA: USW00053863
         IL: USW00094846
+        IN: USW00093814
+        MA: USW00014732
+        MD: USW00093721
+        MI: USW00014819
+        MO: USW00013994
         NC: USW00013723
         NY: USW00094728
+        OH: USW00014820
+        OR: USW00024229
+        PA: USW00014739
+        TN: USW00013897
         TX: USW00013904
         WA: USW00024233
-    start_date: '2021-01-01'
+        WI: USW00014837
+    start_date: '2018-01-01'
     storm_events:
       years:
+      - 2018
+      - 2019
+      - 2020
       - 2021
       - 2022
       - 2023
       - 2024
   timestamp_column: timestamp
 experiment:
-  mode: demo
+  mode: real
   name: hybrid_weather_failure
 features:
   base_weather_cols: null

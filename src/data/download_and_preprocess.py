@@ -86,12 +86,13 @@ STATE_NAME_TO_CODE = {
 }
 
 DEFAULT_REAL_CONFIG = {
-    "start_date": "2021-01-01",
+    "start_date": "2018-01-01",
     "end_date": "2024-12-31",
     "cache_dir": "data/raw/real",
-    "storm_events": {"years": [2021, 2022, 2023, 2024]},
+    "storm_events": {"years": [2018, 2019, 2020, 2021, 2022, 2023, 2024]},
     "ghcn": {
         "stations": {
+            # Original 10 states
             "CA": "USW00023234",  # Los Angeles, CA
             "TX": "USW00013904",  # Dallas/Fort Worth, TX
             "FL": "USW00012839",  # Miami, FL
@@ -102,6 +103,17 @@ DEFAULT_REAL_CONFIG = {
             "AZ": "USW00023183",  # Phoenix, AZ
             "NC": "USW00013723",  # Charlotte, NC
             "CO": "USW00023062",  # Denver, CO
+            # Additional 10 states
+            "PA": "USW00014739",  # Philadelphia, PA
+            "OH": "USW00014820",  # Cleveland, OH
+            "MI": "USW00014819",  # Detroit, MI
+            "MA": "USW00014732",  # Boston, MA
+            "OR": "USW00024229",  # Portland, OR
+            "TN": "USW00013897",  # Nashville, TN
+            "IN": "USW00093814",  # Indianapolis, IN
+            "MO": "USW00013994",  # Kansas City, MO
+            "MD": "USW00093721",  # Baltimore, MD
+            "WI": "USW00014837",  # Milwaukee, WI
         }
     },
 }
@@ -541,8 +553,9 @@ def _load_real_dataset(config: Dict[str, Any]) -> pd.DataFrame:
     storm_files = _download_storm_events_files(storm_years, storm_cache)
     storm_df = _load_storm_events_dataset(storm_files, region_ids, start_date, end_date)
 
-    # Try to use NOAA APIs if token is available, otherwise use file downloads
-    weather_df, coords = _load_ghcn_weather(stations_cfg, start_date, end_date, ghcn_cache, use_api=True)
+    # Use file downloads directly (more reliable than APIs for large date ranges)
+    # Set use_api=False to skip API attempts and go straight to file downloads
+    weather_df, coords = _load_ghcn_weather(stations_cfg, start_date, end_date, ghcn_cache, use_api=False)
 
     merged = _combine_real_dataset(weather_df, coords, storm_df, region_ids, start_date, end_date)
     merged["timestamp"] = pd.to_datetime(merged["timestamp"])

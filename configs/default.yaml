@@ -6,23 +6,35 @@ data:
   group_column: region_id
   timestamp_column: timestamp
   real:
-    start_date: "2021-01-01"
+    start_date: "2018-01-01"
     end_date: "2024-12-31"
     cache_dir: data/raw/real
     storm_events:
-      years: [2021, 2022, 2023, 2024]
+      years: [2018, 2019, 2020, 2021, 2022, 2023, 2024]
     ghcn:
       stations:
-        CA: USW00023234
-        TX: USW00013904
-        FL: USW00012839
-        NY: USW00094728
-        IL: USW00094846
-        GA: USW00053863
-        WA: USW00024233
-        AZ: USW00023183
-        NC: USW00013723
-        CO: USW00023062
+        # Original 10 states
+        CA: USW00023234  # Los Angeles
+        TX: USW00013904  # Dallas/Fort Worth
+        FL: USW00012839  # Miami
+        NY: USW00094728  # New York
+        IL: USW00094846  # Chicago
+        GA: USW00053863  # Atlanta
+        WA: USW00024233  # Seattle
+        AZ: USW00023183  # Phoenix
+        NC: USW00013723  # Charlotte
+        CO: USW00023062  # Denver
+        # Additional 10 states (doubling the dataset)
+        PA: USW00014739  # Philadelphia
+        OH: USW00014820  # Cleveland
+        MI: USW00014819  # Detroit
+        MA: USW00014732  # Boston
+        OR: USW00024229  # Portland
+        TN: USW00013897  # Nashville
+        IN: USW00093814  # Indianapolis
+        MO: USW00013994  # Kansas City
+        MD: USW00093721  # Baltimore
+        WI: USW00014837  # Milwaukee
 
 split:
   val_size: 0.15

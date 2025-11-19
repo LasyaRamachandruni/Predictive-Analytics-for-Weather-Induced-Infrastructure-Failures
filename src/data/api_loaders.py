@@ -49,7 +49,14 @@ session.mount("https://", adapter)
 
 
 def get_api_key(api_name: str, env_var: Optional[str] = None) -> Optional[str]:
-    """Get API key from environment variable or config file."""
+    """Get API key from environment variable or .env file."""
+    # Try loading from .env file first
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass  # python-dotenv not installed
+    
     if env_var:
         key = os.getenv(env_var)
         if key:
